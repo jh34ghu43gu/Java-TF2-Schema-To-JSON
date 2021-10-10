@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
 import com.google.gson.stream.JsonReader;
 
 import ch.qos.logback.classic.Logger;
@@ -35,10 +34,9 @@ public class SchemaHelper {
 		Gson gson = new GsonBuilder().setPrettyPrinting().create();
 		try {
 			JsonReader jsonReader = new JsonReader(new FileReader(filename));
-			JsonPrimitive obj = gson.fromJson(jsonReader, JsonPrimitive.class);
+			JsonObject obj = gson.fromJson(jsonReader, JsonObject.class);
 			jsonReader.close();
-			log.debug(obj.toString());
-			log.debug((String) obj.getAsString().subSequence(0, 20));
+			obj.toString();
 			log.debug("Can already read schema.");
 		} catch(Exception e) {
 			log.debug(e.getMessage());
