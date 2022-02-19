@@ -1,17 +1,21 @@
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Scanner;
 
 import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
-import com.google.gson.stream.JsonReader;
 
 import ch.qos.logback.classic.Logger;
 
@@ -26,16 +30,16 @@ public class SchemaHelper {
 	
 	/**
 	 * Turn the tf2 schema into a .json readable file.
+	 * @param charSet	CharSet to use for decoding/encoding. Schema uses UTF8 and tf_english uses UTF16
 	 * @param filename	Schema file name
 	 * @param newFileName	The output json file name including .json extension
 	 */
-	public static void fixSchema(String filename, String newFileName) {
+	public static void fixSchema(Charset charSet, String filename, String newFileName) {
 		log.debug("Attempting to fix schema file " + filename);
-		Gson gson = new GsonBuilder().setPrettyPrinting().create();
+		Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 		try {
-			JsonReader jsonReader = new JsonReader(new FileReader(filename));
-			JsonObject obj = gson.fromJson(jsonReader, JsonObject.class);
-			jsonReader.close();
+			InputStream is = new FileInputStream(filename);
+			JsonObject obj = gson.fromJson(new InputStreamReader(is, charSet), JsonObject.class);
 			obj.toString();
 			log.debug("Can already read schema.");
 		} catch(Exception e) {
@@ -45,21 +49,32 @@ public class SchemaHelper {
 			try {
 				//I hate this very much
 				
-				String old = new String(Files.readAllBytes(Paths.get(filename)), StandardCharsets.UTF_8);
-				old = old.replaceAll("\\\\", "/");
-				String noTab ="{\n" + old.replaceAll("\t", " ");
-				String noDoubleSpace = noTab.replaceAll("(  +)", " ") + "}";
-				String attributeFix = noDoubleSpace.replaceAll("\" \"", "\":\"");
-				attributeFix = attributeFix.replaceAll("([^:])\"\"", "$1\":\"");
-				//This is because regex hates me and cannot tell if something comes after a newline "\"\n *\\{"
-				String noNewLines = attributeFix.replaceAll(System.getProperty("line.separator"), "NEWLINE");
+				String old = new String(Files.readAllBytes(Paths.get(filename)), charSet);
 				
+				
+				old = old.replaceAll("\\\\", "/"); //Replace escape characters in file paths etc..
+				old = "{\n" + old.replaceAll("\t", " "); //Replace all the tabs with spaces and add opening {
+				old = old.replaceAll("(  +)", " ") + "}"; //Condense all spaces into a single space 
+				old = old.replaceAll("\" \"", "\":\""); //Put the : in between attributes 
+				old = old.replaceAll("([^:/])\"\"", "$1\":\""); //Continue : for attributes
+				//Remove comments (tf_english.txt)
+				old = old.replaceAll("https://", "HTTPS"); //Temporary cache https:// for next step
+				old = old.replaceAll("//.*", " "); //Remove any comments
+				old = old.replaceAll("HTTPS", "https://"); //Restore https://
+				//Un-replace escape characters on quotes
+				old = old.replaceAll("\\.com/\"", "DOTCOM"); //Temporary cache .com/" for next step
+				old = old.replaceAll("/\"", "\\\\\""); //Replace /" with \"
+				old = old.replaceAll("DOTCOM", "\\.com/\""); //Restore .com/"
+				
+				//This is because regex hates me and cannot tell if something comes after a newline "\"\n *\\{"
+				String noNewLines = old.replaceAll(System.getProperty("line.separator"), "NEWLINE");
 				noNewLines = noNewLines.replaceAll(" *NEWLINE( *NEWLINE)+", "NEWLINE");
 				noNewLines = noNewLines.replaceAll(" +NEWLINE", "NEWLINE");
-				String newLineFix = noNewLines.replaceAll("\"NEWLINE *\\{", "\":NEWLINE{");
-				newLineFix = newLineFix.replaceAll("\" *NEWLINE *\"", "\",NEWLINE\"");
-				String closingBracketFix = newLineFix.replaceAll("\\} *NEWLINE *(\"[a-zA-Z0-9_ \\-:\\.]*\":)", "},NEWLINE $1");
-				String revertNEWLINE = closingBracketFix.replaceAll("NEWLINE", "\n");
+				noNewLines = noNewLines.replaceAll("\"NEWLINE *\\{", "\":NEWLINE{");
+				noNewLines = noNewLines.replaceAll("\" *NEWLINE *\"", "\",NEWLINE\"");
+				noNewLines = noNewLines.replaceAll("\\} *NEWLINE *(\"[a-zA-Z0-9_ \\-:\\.]*\":)", "},NEWLINE $1"); //Fix closing brackets
+				
+				String revertNEWLINE = noNewLines.replaceAll("NEWLINE", "\n");
 				
 				
 				//Convert into a temp file, if anything goes wrong in future schema conversions it can be troubleshooted.
@@ -90,5 +105,4 @@ public class SchemaHelper {
 			}
 		}
 	}
-
 }
